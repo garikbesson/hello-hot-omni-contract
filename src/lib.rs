@@ -3,7 +3,6 @@ use near_sdk::{
     env, ext_contract, json_types::U128, log, near, serde_json, Gas, NearToken, Promise,
     PromiseError,
 };
-use serde_json::json;
 use sha2::{Digest, Sha256};
 
 const HOT_OMNI_CONTRACT: &str = "v1-1.omni.hot.tg";
@@ -16,7 +15,7 @@ trait UsdtContract {
 #[ext_contract(hot_omni_contract)]
 trait HotOmniContract {
     fn get_balance(&self, account_id: String);
-    fn omni_transfer(&self, account_id: String);
+    fn omni_transfer(&self, account_id: String, receiver_id: String, token_id: u8, amount: String);
     fn withdraw_on_near(&self, account_id: String, token_id: u8, amount: String);
 }
 
@@ -124,6 +123,40 @@ impl Contract {
             false
         } else {
             env::log_str("withdrawing was successful!");
+            true
+        }
+    }
+
+    pub fn transfer(&self, amount: U128, token_id: u8) -> Promise {
+        let account_id = env::current_account_id();
+        let receiver_id = env::predecessor_account_id();
+
+        hot_omni_contract::ext("v1-1.omni.hot.tg".parse().unwrap())
+            .with_static_gas(Gas::from_tgas(80))
+            .with_attached_deposit(NearToken::from_yoctonear(1))
+            .omni_transfer(
+                get_omni_address(account_id.to_string()),
+                get_omni_address(receiver_id.to_string()),
+                token_id,
+                amount.0.to_string(),
+            )
+            .then(
+                Self::ext(env::current_account_id())
+                    .with_static_gas(Gas::from_tgas(5))
+                    .transfer_callback(),
+            )
+    }
+
+    #[private]
+    pub fn transfer_callback(
+        &self,
+        #[callback_result] call_result: Result<(), PromiseError>,
+    ) -> bool {
+        if call_result.is_err() {
+            log!("There was an error transferring within HOT Omni Contract");
+            false
+        } else {
+            env::log_str("transferring was successful!");
             true
         }
     }
